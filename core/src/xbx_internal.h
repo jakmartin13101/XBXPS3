@@ -19,6 +19,9 @@ namespace xbx
 
 	const paths& get_paths();
 
+	// True once the shell asked the core to shut down
+	bool shutting_down();
+
 	// The emulator's "main thread" (the Qt GUI thread on desktop). Everything RPCS3
 	// posts through g_emu_callbacks.call_from_main_thread runs here, in order.
 	void main_thread_start();

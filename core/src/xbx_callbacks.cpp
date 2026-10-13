@@ -76,7 +76,7 @@ namespace xbx
 
 				main_thread_post([]()
 				{
-					if (Emu.IsStopped(true) && !g_big_picture_mode_active)
+					if (!shutting_down() && Emu.IsStopped(true) && !g_big_picture_mode_active)
 					{
 						xbx_log.notice("Emulation stopped, returning to Big Picture Mode");
 						Emu.BootBigPictureMode();

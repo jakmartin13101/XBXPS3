@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <condition_variable>
 #include <deque>
+#include <future>
 #include <mutex>
 #include <thread>
 
@@ -34,6 +35,7 @@ namespace xbx
 	{
 		xbx_host_api s_host{};
 		paths s_paths;
+		std::atomic<bool> s_shutting_down = false;
 
 		std::unique_ptr<logs::listener> s_log_file;
 
@@ -125,12 +127,15 @@ namespace xbx
 		return s_paths;
 	}
 
+	bool shutting_down()
+	{
+		return s_shutting_down;
+	}
+
 	void main_thread_start()
 	{
 		s_main_thread = std::thread([]()
 		{
-			thread_ctrl::set_name("Main Thread");
-
 			while (true)
 			{
 				std::function<void()> func;
@@ -273,7 +278,6 @@ extern "C" void xbx_core_start()
 		// which Big Picture Mode has just started.
 		std::thread([]()
 		{
-			thread_ctrl::set_name("XBX Importer");
 			xbx::import_pending_files();
 		}).detach();
 	});
@@ -283,8 +287,10 @@ extern "C" void xbx_core_suspend()
 {
 	// The console suspends the whole process shortly after this returns.
 	// Freeze emulation so no thread is mid-frame when the GPU and audio go away.
-	atomic_t<u32> done = 0;
-	xbx::main_thread_post([&]()
+	auto done = std::make_shared<std::promise<void>>();
+	std::future<void> finished = done->get_future();
+
+	xbx::main_thread_post([done]()
 	{
 		if (Emu.IsRunning())
 		{
@@ -292,13 +298,14 @@ extern "C" void xbx_core_suspend()
 		}
 
 		logs::listener::sync_all();
-		done = 1;
-		done.notify_one();
+		done->set_value();
 	});
 
-	while (!done)
+	// Never hang the suspend handler: the OS kills apps that take too long to suspend,
+	// and the RSX thread may itself be waiting on the UI thread (swapchain attach).
+	if (finished.wait_for(std::chrono::seconds(2)) != std::future_status::ready)
 	{
-		done.wait(0);
+		xbx_log.warning("Suspend: emulator did not pause in time");
 	}
 }
 
@@ -320,6 +327,8 @@ extern "C" void xbx_core_open_home_menu()
 
 extern "C" void xbx_core_shutdown()
 {
+	xbx::s_shutting_down = true;
+
 	atomic_t<u32> done = 0;
 	xbx::main_thread_post([&]()
 	{
