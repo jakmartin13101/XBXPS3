@@ -1,0 +1,2 @@
+# RPCS3 sources mix LF and CRLF; patches must apply byte-for-byte.
+*.patch -text

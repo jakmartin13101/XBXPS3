@@ -1,0 +1,3 @@
+# Xbox replacements for RPCS3 overlay strings. Format: NAME = text (C escapes allowed).
+BIG_PICTURE_NO_GAMES_FOUND = No games found.\nCopy disc games to E:\\XBXPS3\\games or put .pkg files in an Install folder, then restart XBXPS3.
+BIG_PICTURE_MENU_EXIT = Reload Game List

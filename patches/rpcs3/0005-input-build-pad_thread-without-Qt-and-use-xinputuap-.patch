@@ -1,0 +1,134 @@
+From 8789be2e92b12a6a95e5dab2091b5f905d167000 Mon Sep 17 00:00:00 2001
+From: XBXPS3 <xbxps3@localhost>
+Date: Tue, 13 Oct 2026 11:32:06 +0000
+Subject: [PATCH 5/6] input: build pad_thread without Qt and use xinputuap on
+ Xbox
+
+---
+ rpcs3/Input/mouse_gyro_handler.cpp |  5 +++++
+ rpcs3/Input/pad_thread.cpp         | 12 ++++++++----
+ rpcs3/Input/xinput_pad_handler.cpp |  9 +++++++++
+ 3 files changed, 22 insertions(+), 4 deletions(-)
+
+diff --git a/rpcs3/Input/mouse_gyro_handler.cpp b/rpcs3/Input/mouse_gyro_handler.cpp
+index 6d8bafd..267cc05 100644
+--- a/rpcs3/Input/mouse_gyro_handler.cpp
++++ b/rpcs3/Input/mouse_gyro_handler.cpp
+@@ -1,10 +1,12 @@
+ #include "stdafx.h"
+ #include "mouse_gyro_handler.h"
+ 
++#ifndef RPCS3_UWP
+ #include <QEvent>
+ #include <QMouseEvent>
+ #include <QWheelEvent>
+ #include <QWindow>
++#endif
+ 
+ #include <algorithm>
+ 
+@@ -62,6 +64,8 @@ void mouse_gyro_handler::set_gyro_y(s32 steps)
+ 	m_gyro_y = static_cast<u16>(std::clamp(m_gyro_y + steps, 0, DEFAULT_MOTION_Y * 2 - 1));
+ }
+ 
++#ifndef RPCS3_UWP
++// Qt mouse events do not exist on Xbox; mouse-based gyro stays disabled there.
+ void mouse_gyro_handler::handle_event(QEvent* ev, const QWindow& win)
+ {
+ 	if (!m_enabled)
+@@ -127,6 +131,7 @@ void mouse_gyro_handler::handle_event(QEvent* ev, const QWindow& win)
+ 	}
+ 	}
+ }
++#endif
+ 
+ void mouse_gyro_handler::apply_gyro(const std::shared_ptr<Pad>& pad)
+ {
+diff --git a/rpcs3/Input/pad_thread.cpp b/rpcs3/Input/pad_thread.cpp
+index 6d9e4e9..33df943 100644
+--- a/rpcs3/Input/pad_thread.cpp
++++ b/rpcs3/Input/pad_thread.cpp
+@@ -8,14 +8,16 @@
+ #include "ps_move_handler.h"
+ #ifdef _WIN32
+ #include "xinput_pad_handler.h"
++#ifndef RPCS3_UWP
+ #include "mm_joystick_handler.h"
++#endif
+ #elif HAVE_LIBEVDEV
+ #include "evdev_joystick_handler.h"
+ #endif
+ #ifdef HAVE_SDL3
+ #include "sdl_pad_handler.h"
+ #endif
+-#ifndef ANDROID
++#if !defined(ANDROID) && !defined(RPCS3_UWP)
+ #include "keyboard_pad_handler.h"
+ #endif
+ #include "Emu/Io/Null/NullPadHandler.h"
+@@ -154,7 +156,7 @@ void pad_thread::Init()
+ 
+ 	input_log.trace("Using pad config:\n%s", g_cfg_input);
+ 
+-#ifndef ANDROID
++#if !defined(ANDROID) && !defined(RPCS3_UWP)
+ 	std::shared_ptr<keyboard_pad_handler> keyptr;
+ #endif
+ 
+@@ -177,7 +179,7 @@ void pad_thread::Init()
+ 		{
+ 			if (handler_type == pad_handler::keyboard)
+ 			{
+-#ifndef ANDROID
++#if !defined(ANDROID) && !defined(RPCS3_UWP)
+ 				keyptr = std::make_shared<keyboard_pad_handler>();
+ 				keyptr->moveToThread(static_cast<QThread*>(m_curthread));
+ 				keyptr->SetTargetWindow(static_cast<QWindow*>(m_curwindow));
+@@ -857,7 +859,7 @@ std::shared_ptr<PadHandlerBase> pad_thread::GetHandler(pad_handler type)
+ 	case pad_handler::null:
+ 		return std::make_shared<NullPadHandler>();
+ 	case pad_handler::keyboard:
+-#ifdef ANDROID
++#if defined(ANDROID) || defined(RPCS3_UWP)
+ 		return std::make_shared<NullPadHandler>();
+ #else
+ 		return std::make_shared<keyboard_pad_handler>();
+@@ -875,9 +877,11 @@ std::shared_ptr<PadHandlerBase> pad_thread::GetHandler(pad_handler type)
+ #ifdef _WIN32
+ 	case pad_handler::xinput:
+ 		return std::make_shared<xinput_pad_handler>();
++#ifndef RPCS3_UWP
+ 	case pad_handler::mm:
+ 		return std::make_shared<mm_joystick_handler>();
+ #endif
++#endif
+ #ifdef HAVE_SDL3
+ 	case pad_handler::sdl:
+ 		return std::make_shared<sdl_pad_handler>();
+diff --git a/rpcs3/Input/xinput_pad_handler.cpp b/rpcs3/Input/xinput_pad_handler.cpp
+index 349d36c..3cdea03 100644
+--- a/rpcs3/Input/xinput_pad_handler.cpp
++++ b/rpcs3/Input/xinput_pad_handler.cpp
+@@ -376,6 +376,14 @@ bool xinput_pad_handler::Init()
+ 	if (m_is_init)
+ 		return true;
+ 
++#ifdef RPCS3_UWP
++	// UWP apps cannot load the desktop xinput DLLs. Link against xinputuap.lib instead.
++	// The hidden ordinal 100 (Guide button) and the SCP extensions are not available there.
++	xinputGetState = ::XInputGetState;
++	xinputSetState = ::XInputSetState;
++	xinputGetBatteryInformation = ::XInputGetBatteryInformation;
++	m_is_init = true;
++#else
+ 	for (auto it : XINPUT_INFO::LIBRARY_FILENAMES)
+ 	{
+ 		library.load(it);
+@@ -403,6 +411,7 @@ bool xinput_pad_handler::Init()
+ 			xinputGetBatteryInformation = nullptr;
+ 		}
+ 	}
++#endif
+ 
+ 	b_has_orientation = !!xinputGetCustomData;
+ 

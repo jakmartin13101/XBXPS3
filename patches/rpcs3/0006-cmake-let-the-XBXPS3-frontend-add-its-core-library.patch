@@ -1,0 +1,23 @@
+From 08fd7cc651d7ebd9da684dc15cfb863de850abb8 Mon Sep 17 00:00:00 2001
+From: XBXPS3 <xbxps3@localhost>
+Date: Tue, 13 Oct 2026 11:45:01 +0000
+Subject: [PATCH 6/6] cmake: let the XBXPS3 frontend add its core library
+
+---
+ CMakeLists.txt | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index bf283f8..2e2bab1 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -154,4 +154,9 @@ if(BUILD_RPCS3_TESTS)
+ endif()
+ add_subdirectory(rpcs3)
+ 
++# The XBXPS3 Xbox frontend builds its core library on top of rpcs3_emu
++if(RPCS3_UWP AND XBXPS3_FRONTEND_DIR)
++    add_subdirectory(${XBXPS3_FRONTEND_DIR} xbxps3_core)
++endif()
++
+ set_directory_properties(PROPERTIES VS_STARTUP_PROJECT rpcs3)

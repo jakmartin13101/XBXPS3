@@ -1,0 +1,75 @@
+From 83b0749dfe3d4dd4c4c12fb10208ebfc4f35e666 Mon Sep 17 00:00:00 2001
+From: XBXPS3 <xbxps3@localhost>
+Date: Tue, 13 Oct 2026 11:31:05 +0000
+Subject: [PATCH 3/6] vk: load Vulkan through volk and accept Dozen on Xbox
+
+---
+ rpcs3/Emu/RSX/VK/VKHelpers.cpp         | 5 ++++-
+ rpcs3/Emu/RSX/VK/VulkanAPI.h           | 6 ++++++
+ rpcs3/Emu/RSX/VK/vkutils/instance.cpp  | 5 +++++
+ rpcs3/Emu/RSX/VK/vkutils/swapchain.cpp | 2 +-
+ 4 files changed, 16 insertions(+), 2 deletions(-)
+
+diff --git a/rpcs3/Emu/RSX/VK/VKHelpers.cpp b/rpcs3/Emu/RSX/VK/VKHelpers.cpp
+index cfa8391..2680f2e 100644
+--- a/rpcs3/Emu/RSX/VK/VKHelpers.cpp
++++ b/rpcs3/Emu/RSX/VK/VKHelpers.cpp
+@@ -131,7 +131,10 @@ namespace vk
+ 			break;
+ 		case driver_vendor::DOZEN:
+ 			// This driver is often picked by mistake when the user meant to select something else. Complain loudly.
+-#ifdef _WIN32
++#ifdef RPCS3_UWP
++			// Dozen is the only Vulkan driver on Xbox, so it is expected here.
++			rsx_log.notice("Running on Dozen (Vulkan on Direct3D 12)");
++#elif defined(_WIN32)
+ 			MessageBox(NULL,
+ 				L"You're attempting to run rpcs3 on Microsoft's Dozen driver that emulates vulkan on top of Direct3D12.\n"
+ 				"This driver is unsupported. You should use your vendor's vulkan driver whenever possible.",
+diff --git a/rpcs3/Emu/RSX/VK/VulkanAPI.h b/rpcs3/Emu/RSX/VK/VulkanAPI.h
+index 57e366c..f3bfab9 100644
+--- a/rpcs3/Emu/RSX/VK/VulkanAPI.h
++++ b/rpcs3/Emu/RSX/VK/VulkanAPI.h
+@@ -21,7 +21,13 @@
+ #pragma warning( disable : 4005 )
+ #endif
+ 
++#ifdef RPCS3_UWP
++// Xbox: no Vulkan loader exists, so every entry point is a volk function pointer
++// that the frontend fills from the packaged Dozen (Vulkan-on-D3D12) driver.
++#include <volk.h>
++#else
+ #include <vulkan/vulkan.h>
++#endif
+ 
+ #ifdef _MSC_VER
+ #pragma warning(pop)
+diff --git a/rpcs3/Emu/RSX/VK/vkutils/instance.cpp b/rpcs3/Emu/RSX/VK/vkutils/instance.cpp
+index e59c249..22b7fa2 100644
+--- a/rpcs3/Emu/RSX/VK/vkutils/instance.cpp
++++ b/rpcs3/Emu/RSX/VK/vkutils/instance.cpp
+@@ -227,6 +227,11 @@ namespace vk
+ 			return false;
+ 		}
+ 
++#ifdef RPCS3_UWP
++		// Resolve instance and device entry points straight from the driver
++		volkLoadInstance(m_instance);
++#endif
++
+ 		return true;
+ 	}
+ #ifdef __clang__
+diff --git a/rpcs3/Emu/RSX/VK/vkutils/swapchain.cpp b/rpcs3/Emu/RSX/VK/vkutils/swapchain.cpp
+index 2fd2dc0..9f23c32 100644
+--- a/rpcs3/Emu/RSX/VK/vkutils/swapchain.cpp
++++ b/rpcs3/Emu/RSX/VK/vkutils/swapchain.cpp
+@@ -149,7 +149,7 @@ namespace vk
+ 
+ 	std::pair<VkSurfaceCapabilitiesKHR, bool> swapchain_WSI::init_surface_capabilities()
+ 	{
+-#ifdef _WIN32
++#if defined(_WIN32) && !defined(RPCS3_UWP)
+ 		if (g_cfg.video.vk.exclusive_fullscreen_mode != vk_exclusive_fs_mode::unspecified && dev.get_surface_capabilities_2_support())
+ 		{
+ 			HMONITOR hmonitor = MonitorFromWindow(window_handle, MONITOR_DEFAULTTOPRIMARY);

@@ -1,0 +1,70 @@
+From 65e8c852b7fd125af9fa9682a90f224538851f94 Mon Sep 17 00:00:00 2001
+From: XBXPS3 <xbxps3@localhost>
+Date: Tue, 13 Oct 2026 11:30:47 +0000
+Subject: [PATCH 2/6] fs: take executable and config directories from the Xbox
+ frontend
+
+---
+ Utilities/File.cpp | 21 +++++++++++++++++++++
+ 1 file changed, 21 insertions(+)
+
+diff --git a/Utilities/File.cpp b/Utilities/File.cpp
+index e8c7ab6..36d3675 100644
+--- a/Utilities/File.cpp
++++ b/Utilities/File.cpp
+@@ -20,6 +20,13 @@ std::string g_android_config_dir;
+ std::string g_android_cache_dir;
+ #endif
+ 
++#ifdef RPCS3_UWP
++// Set by the Xbox frontend before the emulator is initialized.
++// The package install folder is read-only, so configuration and caches live in LocalState.
++std::string g_uwp_executable_dir; // Package install folder, with a trailing slash
++std::string g_uwp_config_dir;     // LocalState folder, with a trailing slash
++#endif
++
+ #ifdef _WIN32
+ 
+ #include "Utilities/StrUtil.h"
+@@ -2445,6 +2452,8 @@ std::string fs::get_executable_path()
+ {
+ #ifdef ANDROID
+ 	return g_android_executable_dir + "/dummy-rpcs3.apk";
++#elif defined(RPCS3_UWP)
++	return g_uwp_executable_dir + "XBXPS3.exe";
+ #else
+ 	// Use magic static
+ 	static const std::string s_exe_path = []
+@@ -2498,6 +2507,8 @@ std::string fs::get_executable_dir()
+ {
+ #ifdef ANDROID
+ 	return g_android_executable_dir;
++#elif defined(RPCS3_UWP)
++	return g_uwp_executable_dir;
+ #else
+ 	// Use magic static
+ 	static const std::string s_exe_dir = []
+@@ -2519,6 +2530,14 @@ const std::string& fs::get_config_dir([[maybe_unused]] bool get_config_subdirect
+ {
+ #ifdef ANDROID
+ 	return g_android_config_dir;
++#elif defined(RPCS3_UWP)
++	if (get_config_subdirectory)
++	{
++		static const std::string subdir = g_uwp_config_dir + "config/";
++		return subdir;
++	}
++
++	return g_uwp_config_dir;
+ #else
+ 	// Use magic static
+ 	static const std::string s_dir = []
+@@ -2617,6 +2636,8 @@ const std::string& fs::get_cache_dir()
+ {
+ #ifdef ANDROID
+ 	return g_android_cache_dir;
++#elif defined(RPCS3_UWP)
++	return g_uwp_config_dir;
+ #else
+ 	static const std::string s_dir = []
+ 	{

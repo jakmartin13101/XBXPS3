@@ -1,0 +1,98 @@
+From ff36d008c0a8aded60efc695b0331a8fcda3d023 Mon Sep 17 00:00:00 2001
+From: XBXPS3 <xbxps3@localhost>
+Date: Tue, 13 Oct 2026 11:31:31 +0000
+Subject: [PATCH 4/6] audio: let the XAudio2 backend run without the MMDevice
+ API on Xbox
+
+---
+ rpcs3/Emu/Audio/XAudio2/XAudio2Backend.cpp    | 20 +++++++++++++++++--
+ .../Emu/Audio/XAudio2/xaudio2_enumerator.cpp  |  6 ++++++
+ 2 files changed, 24 insertions(+), 2 deletions(-)
+
+diff --git a/rpcs3/Emu/Audio/XAudio2/XAudio2Backend.cpp b/rpcs3/Emu/Audio/XAudio2/XAudio2Backend.cpp
+index 757a977..c21c0a1 100644
+--- a/rpcs3/Emu/Audio/XAudio2/XAudio2Backend.cpp
++++ b/rpcs3/Emu/Audio/XAudio2/XAudio2Backend.cpp
+@@ -76,12 +76,14 @@ XAudio2Backend::XAudio2Backend()
+ 		XAudio.error("RegisterForCallbacks() failed: %s (0x%08x)", std::system_category().message(hr), static_cast<u32>(hr));
+ 	}
+ 
++#ifndef RPCS3_UWP
+ 	// Try to register a listener for device changes
+ 	if (HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&enumerator)); FAILED(hr))
+ 	{
+ 		XAudio.error("CoCreateInstance() failed: %s (0x%08x)", std::system_category().message(hr), static_cast<u32>(hr));
+ 		return;
+ 	}
++#endif
+ 
+ 	// All succeeded, "commit"
+ 	m_xaudio2_instance = std::move(instance);
+@@ -159,7 +161,10 @@ void XAudio2Backend::CloseUnlocked()
+ 		m_master_voice = nullptr;
+ 	}
+ 
+-	m_device_enumerator->UnregisterEndpointNotificationCallback(this);
++	if (m_device_enumerator != nullptr)
++	{
++		m_device_enumerator->UnregisterEndpointNotificationCallback(this);
++	}
+ 
+ 	m_playing = false;
+ 	m_last_sample.fill(0);
+@@ -211,6 +216,16 @@ bool XAudio2Backend::Open(std::string_view dev_id, AudioFreq freq, AudioSampleSi
+ 	const bool use_default_device = dev_id.empty() || dev_id == audio_device_enumerator::DEFAULT_DEV_ID;
+ 	std::string selected_dev_id{};
+ 
++#ifdef RPCS3_UWP
++	// UWP has no MMDevice API. The console always renders to its default endpoint,
++	// which XAudio2 selects when the device id is null.
++	if (!use_default_device)
++	{
++		XAudio.warning("Ignoring audio device '%s': only the default device is available on Xbox", dev_id);
++	}
++
++	if (HRESULT hr = m_xaudio2_instance->CreateMasteringVoice(&m_master_voice, 0, 0, 0, nullptr); FAILED(hr))
++#else
+ 	if (use_default_device)
+ 	{
+ 		Microsoft::WRL::ComPtr<IMMDevice> default_dev{};
+@@ -237,6 +252,7 @@ bool XAudio2Backend::Open(std::string_view dev_id, AudioFreq freq, AudioSampleSi
+ 	}
+ 
+ 	if (HRESULT hr = m_xaudio2_instance->CreateMasteringVoice(&m_master_voice, 0, 0, 0, utf8_to_wchar(use_default_device ? selected_dev_id : dev_id).c_str()); FAILED(hr))
++#endif
+ 	{
+ 		XAudio.error("CreateMasteringVoice() failed: %s (0x%08x)", std::system_category().message(hr), static_cast<u32>(hr));
+ 		m_master_voice = nullptr;
+@@ -283,7 +299,7 @@ bool XAudio2Backend::Open(std::string_view dev_id, AudioFreq freq, AudioSampleSi
+ 		return false;
+ 	}
+ 
+-	if (HRESULT hr = m_device_enumerator->RegisterEndpointNotificationCallback(this); FAILED(hr))
++	if (HRESULT hr = m_device_enumerator ? m_device_enumerator->RegisterEndpointNotificationCallback(this) : S_OK; FAILED(hr))
+ 	{
+ 		XAudio.error("RegisterEndpointNotificationCallback() failed: %s (0x%08x)", std::system_category().message(hr), static_cast<u32>(hr));
+ 		CloseUnlocked();
+diff --git a/rpcs3/Emu/Audio/XAudio2/xaudio2_enumerator.cpp b/rpcs3/Emu/Audio/XAudio2/xaudio2_enumerator.cpp
+index e170add..460b360 100644
+--- a/rpcs3/Emu/Audio/XAudio2/xaudio2_enumerator.cpp
++++ b/rpcs3/Emu/Audio/XAudio2/xaudio2_enumerator.cpp
+@@ -25,6 +25,11 @@ xaudio2_enumerator::~xaudio2_enumerator()
+ 
+ std::vector<audio_device_enumerator::audio_device> xaudio2_enumerator::get_output_devices()
+ {
++#ifdef RPCS3_UWP
++	// Only the default endpoint (DEFAULT_DEV_ID) can be used on Xbox
++	return {};
++#else
++
+ 	Microsoft::WRL::ComPtr<IMMDeviceEnumerator> devEnum{};
+ 	if (HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&devEnum)); FAILED(hr))
+ 	{
+@@ -150,4 +155,5 @@ std::vector<audio_device_enumerator::audio_device> xaudio2_enumerator::get_outpu
+ 	});
+ 
+ 	return device_list;
++#endif
+ }
