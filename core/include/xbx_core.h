@@ -57,6 +57,11 @@ void xbx_core_open_home_menu(void);
 // Stops emulation and flushes logs and settings.
 void xbx_core_shutdown(void);
 
+// Tests address-space reservation, JIT page protections, CPU features and D3D12 caps on the
+// running console and writes the results to report_path (header text is written first).
+// Safe to call before xbx_core_init.
+void xbx_core_run_probe(const char* report_path_utf8, const char* header_utf8);
+
 #ifdef __cplusplus
 }
 #endif

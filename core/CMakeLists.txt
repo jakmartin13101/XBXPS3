@@ -45,6 +45,7 @@ add_library(xbxps3_frontend STATIC
 	src/xbx_gs_frame.cpp
 	src/xbx_image.cpp
 	src/xbx_install.cpp
+	src/xbx_probe.cpp
 	src/xbx_settings.cpp
 	src/xbx_strings.cpp
 	src/xbx_vulkan.cpp
